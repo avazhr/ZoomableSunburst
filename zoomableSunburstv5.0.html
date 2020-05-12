@@ -1,0 +1,655 @@
+<!DOCTYPE html>
+<head>
+    <style>
+        body {
+            font-family: Sans-serif;
+            font-size: 11px;
+        }
+
+        .slice {
+            cursor: pointer;
+        }
+
+        .slice .main-arc {
+            stroke: #fff;
+            stroke-width: 1px;
+        }
+
+        .slice .hidden-arc {
+            fill: none;
+        }
+
+        .slice text {
+            pointer-events: none;
+            dominant-baseline: middle;
+            text-anchor: middle;
+        }
+
+        .svg {
+        border: solid 1px blue;
+        display: block;
+        }
+
+        .svg:nth-child(10) {
+        float: left;
+        }
+        
+
+    </style>
+
+    <script src='https://d3js.org/d3.v4.min.js'></script>
+
+</head>
+<body>
+    <script>
+        const width = window.innerWidth,
+            height = window.innerHeight,
+            maxRadius = (Math.min(width, height) / 2) - 5;
+
+        const formatNumber = d3.format(',d');
+
+        const x = d3.scaleLinear()
+            .range([0, 2 * Math.PI])
+            .clamp(true);
+
+        const y = d3.scaleSqrt()
+            .range([maxRadius*.1, maxRadius]);
+
+        //COLORS 
+        //below is the colors that works.
+        //const color = d3.scaleOrdinal(d3.schemeCategory20c);    //schemeCategory10
+        const myColor = d3.scaleLinear()
+            .domain([0,1,2,3])
+            .range(["C0C0C0","#FF6050", "#FFBB4E", "#69C455"])
+
+        const partition = d3.partition();
+
+        //************************//
+        //  parent svg
+        //************************
+        // const svg = d3.select('body').append('svg')
+        //     .style('width', '100vw')
+        //     .style('height', '100vh')
+        //     .attr('viewBox', `0 0 ${width} ${height}`)
+        
+        
+        const arc = d3.arc()
+            .startAngle(dOne => x(dOne.x0))
+            .endAngle(dOne => x(dOne.x1))
+            .innerRadius(dOne => Math.max(0, y(dOne.y0)))
+            .outerRadius(dOne => Math.max(0, y(dOne.y1)));
+
+        const middleArcLine = dOne => { 
+            const halfPi = Math.PI/2;
+            const angles = [x(dOne.x0) - halfPi, x(dOne.x1) - halfPi];
+            const r = Math.max(0, (y(dOne.y0) + y(dOne.y1)) / 2);
+
+            const middleAngle = (angles[1] + angles[0]) / 2;
+            const invertDirection = middleAngle > 0 && middleAngle < Math.PI; // On lower quadrants write text ccw
+            if (invertDirection) { angles.reverse(); }
+
+            const path = d3.path();
+            path.arc(0, 0, r, angles[0], angles[1], invertDirection);
+            return path.toString();
+        };
+ 
+        
+        // //TEXT
+        // const textFits = dOne => {
+        //     const CHAR_SPACE = 4;
+
+        //     const deltaAngle = x(dOne.x1) - x(dOne.x0);
+        //     const r = Math.max(0, (y(dOne.y0) + y(dOne.y1)) / 2);
+        //     const perimeter = r * deltaAngle;
+
+        //     return dOne.data.name.length * CHAR_SPACE < perimeter;
+        // };    
+ //**********************************************************************************************//
+//  first small svg
+//**********************************************************************************************//
+                //TEXT
+        const textFits1 = d => {
+            const CHAR_SPACE = 4;
+
+            const deltaAngle = x(d.x1) - x(d.x0);
+            const r = Math.max(0, (y(d.y0) + y(d.y1)) / 2);
+            const perimeter = r * deltaAngle;
+
+            return d.data.name.length * CHAR_SPACE < perimeter;
+
+
+            /*
+            const CHAR_SPACE = 4;
+
+            const deltaAngle = x(dOne.x1) - x(dOne.x0);
+            const r = Math.max(0, (y(dOne.y0) + y(dOne.y1)) / 2);
+            const perimeter = r * deltaAngle;
+
+            return dOne.data.name.length * CHAR_SPACE < perimeter;*/
+        };    
+  
+
+        var innerSVG = d3.select('body').append('svg')
+                .attr('width','40vw')  //try to use 'vw', 'vh'
+                .attr('height','40vh')
+                .attr('viewBox', `-500 -455 ${width} ${height}`)
+                .on('click', () => focusOn1()); // Reset zoom on canvas click
+            //using json
+
+        d3.json("IExplore.json", (error, root) => {
+            if (error) throw error;
+
+            root = d3.hierarchy(root);
+            root.sum(dOne => dOne.score+1);
+
+            const slice1 = innerSVG.selectAll('innerSVG.g.slice')
+                .data(partition(root).descendants());
+
+            slice1.exit().remove();
+
+            const newSlice1 = slice1.enter()
+                .append('g').attr('class', 'slice')
+                .on('click', dOne => {
+                    d3.event.stopPropagation();
+                    focusOn1(dOne);
+                });
+
+            //tagline
+            newSlice1.append('title')
+                .text(function(dOne) {
+                    if (dOne.depth==2 | dOne.depth==1 | dOne.depth==0)
+                        return dOne.data.name  + '\n' +dOne.data.tagline;
+                    else return dOne.data.name
+                });
+
+            //Slicessssss color and style
+            newSlice1.append('path')
+                .attr('class', 'main-arc')
+                .attr("fill-opacity", 1)
+                .style('fill', 
+                    function(d){
+                        if(d.depth>=2) {
+                            if (d.data.score==0) {return "C0C0C0"}  //grey
+                            else if (d.data.score==1) {return "#e02e16"} //pink
+                            else if (d.data.score==2) {return "#fcb721"} //yellow
+                            else if (d.data.score ==3) {return "#61c076"} //green
+                            else {return "#b4acaa"}
+                        } 
+                        else if (d.depth == 1) {
+                             return myColor(d.value/d.children.length-1)
+                         }
+                        else if (d.depth ==0) {
+    
+                            var total=0;
+                            for(var i=0; i<d.children.length; i++){
+                                var child=d.children[i];
+                                total +=(child.value/child.children.length-1);
+                            }
+                            return myColor(total/d.children.length);
+                        }
+
+                    }
+                )
+                .attr('d', arc);
+
+            newSlice1.append('path')
+                .attr('class', 'hidden-arc')
+                .attr('id', (_, i) => `hiddenArc${i}`)
+                .attr('d', middleArcLine);
+
+            const text1 = newSlice1.append('text')
+                .attr('display', d => textFits1(d) ? null : 'none');
+
+            // Add white contour
+            text1.append('textPath')
+                .attr('startOffset','50%')
+                .attr('xlink:href', (_, i) => `#hiddenArc${i}` )
+                .text(d => d.data.name)
+                .style('fill', 'none')
+                .style('stroke', '#fff')
+                .style('stroke-width', 5)
+                .style('stroke-linejoin', 'round');
+
+            text1.append('textPath')
+                .attr('startOffset','50%')
+                .attr('xlink:href', (_, i) => `#hiddenArc${i}` )
+                .text(d => d.data.name);
+        });
+
+    //Transitions
+        function focusOn1(d = { x0: 0, x1: 1, y0: 0, y1: 1 }) {
+            // Reset to top-level if no data point specified
+
+            const transition1 = innerSVG.transition()
+                .duration(750)
+                .tween('scale', () => {
+                    const xd = d3.interpolate(x.domain(), [d.x0, d.x1]),
+                        yd = d3.interpolate(y.domain(), [d.y0, 1]);
+                    return t => { x.domain(xd(t)); y.domain(yd(t)); };
+                });
+
+            transition1.selectAll('path.main-arc')
+                .attrTween('d', d => () => arc(d));
+
+            transition1.selectAll('path.hidden-arc')  //arc for text
+               .attrTween('d', d => () => middleArcLine(d));
+
+            transition1.selectAll('text1')
+               .attrTween('display', d => () => textFits1(d) ? null : 'none');
+
+            moveStackToFront(d);
+
+            function moveStackToFront(el) {
+                innerSVG.selectAll('.slice').filter(d => d === el)
+                    .each(function(d) {
+                        this.parentNode.appendChild(this);
+                        if (d.parent) { moveStackToFront(d.parent); }
+                    })
+            }
+        }
+
+        /**********************************************************************************/
+        //    second svg            //
+        /**********************************************************************************/
+
+        const textFits2 = d => {
+            const CHAR_SPACE = 4;
+
+            const deltaAngle = x(d.x1) - x(d.x0);
+            const r = Math.max(0, (y(d.y0) + y(d.y1)) / 2);
+            const perimeter = r * deltaAngle;
+
+            return d.data.name.length * CHAR_SPACE < perimeter;
+        };  
+            var innerSVG2 = d3.select('body').append('svg')
+                .attr('width', '40vw')
+                .attr('height', '40vh' )
+                .attr('viewBox', ` -500 -455 ${width} ${height}`)
+                .on('click', () => focusOn2()); // Reset zoom on canvas click
+
+            //using json
+        d3.json("Sampling.json", (error, root) => {
+            if (error) throw error;
+
+            root = d3.hierarchy(root);
+            root.sum(dTwo => dTwo.score+1);
+            //root.sum(d => d.score); //d.size
+
+            const slice2 = innerSVG2.selectAll('g.slice')
+                .data(partition(root).descendants());
+
+            slice2.exit().remove();
+
+            const newSlice2 = slice2.enter()
+                .append('g').attr('class', 'slice')
+                .on('click', d => {
+                    d3.event.stopPropagation();
+                    focusOn2(d);
+                });
+
+            newSlice2.append('title')
+                .text(function(d) {
+                    if (d.depth==1 | d.depth==2 | d.depth==0)
+                        return d.data.name  + '\n' +d.data.tagline;
+                    else return d.data.name
+                });
+
+            //Slicessssss color and style
+            newSlice2.append('path')
+                .attr('class', 'main-arc')
+                .attr("fill-opacity", 1)
+                .style('fill', 
+                    function(d){
+                        if(d.depth>=2) {
+                            if (d.data.score==0) {return "C0C0C0"}  //grey
+                            else if (d.data.score==1) {return "#e02e16"} //pink
+                            else if (d.data.score==2) {return "#fcb721"} //yellow
+                            else if (d.data.score ==3) {return "#61c076"} //green
+                            else {return "#b4acaa"}
+                        } 
+                        else if (d.depth == 1) {
+                             return myColor(d.value/d.children.length-1)
+                         }
+                        else if (d.depth ==0) {
+                            var total=0;
+                            for(var i=0; i<d.children.length; i++){
+                                var child=d.children[i];
+                                total +=(child.value/child.children.length-1);
+                            }
+                            return myColor(total/d.children.length);
+                        }
+                    }
+                )
+                .attr('d', arc);
+
+            newSlice2.append('path')
+                .attr('class', 'hidden-arc')
+                .attr('id', (_, i) => `hiddenArc${i+61}`)
+                .attr('d', middleArcLine);
+
+            const text2 = newSlice2.append('text')
+                .attr('display', d => textFits1(d) ? null : 'none');
+            //Add white contour
+            text2.append('textPath')
+                .attr('startOffset','50%')
+                .attr('xlink:href', (_, i) => `#hiddenArc${i+61}` )
+                .text(dTwo => dTwo.data.name)
+                .style('fill', 'none')
+                .style('stroke', '#fff')
+                .style('stroke-width', 5)
+                .style('stroke-linejoin', 'round');
+
+            text2.append('textPath')
+                .attr('startOffset','50%')
+                .attr('xlink:href', (_, i) => `#hiddenArc${i+61}` )
+                .text(dTwo => dTwo.data.name);
+        });
+
+    //Transitions
+        function focusOn2(d = { x0: 0, x1: 1, y0: 0, y1: 1 }) {
+            // Reset to top-level if no data point specified
+
+            const transition2 = innerSVG2.transition()
+                .duration(750)
+                .tween('scale', () => {
+                    const xd = d3.interpolate(x.domain(), [d.x0, d.x1]),
+                        yd = d3.interpolate(y.domain(), [d.y0, 1]);
+                    return t => { x.domain(xd(t)); y.domain(yd(t)); };
+                });
+
+            transition2.selectAll('path.main-arc')
+                .attrTween('d', d => () => arc(d));
+
+            transition2.selectAll('path.hidden-arc')
+                .attrTween('d', d => () => middleArcLine(d));
+
+            transition2.selectAll('innerSVG2.text2')
+                .attrTween('display', d => () => textFits1(d) ? null : 'none');
+
+            moveStackToFront(d);
+
+            function moveStackToFront(elD) {
+                innerSVG2.selectAll('.slice').filter(d => d === elD)
+                    .each(function(d) {
+                        this.parentNode.appendChild(this);
+                        if (d.parent) { moveStackToFront(d.parent); }
+                    })
+            }
+        }
+        
+        /**********************************************************************************/
+        //    third svg            //
+        /**********************************************************************************/
+        const textFits3 = dOne => {
+            const CHAR_SPACE = 4;
+
+            const deltaAngle = x(dOne.x1) - x(dOne.x0);
+            const r = Math.max(0, (y(dOne.y0) + y(dOne.y1)) / 2);
+            const perimeter = r * deltaAngle;
+
+            return dOne.data.name.length * CHAR_SPACE < perimeter;
+        };  
+        var innerSVG3 = d3.select('body').append('svg')
+                .attr('width', '40vw')
+                .attr('height', '40vh')
+                .attr('viewBox', ` -500 -455 ${width} ${height}`)
+                .on('click', () => focusOn3()); // Reset zoom on canvas click
+
+            //using json
+        d3.json("Anticipating.json", (error, root) => {
+            if (error) throw error;
+
+            root = d3.hierarchy(root);
+            root.sum(d => d.score+1);
+            //root.sum(d => d.score); //d.size
+
+            const slice3 = innerSVG3.selectAll('g.slice')
+                .data(partition(root).descendants());
+
+            slice3.exit().remove();
+
+            const newSlice3 = slice3.enter()
+                .append('g').attr('class', 'slice')
+                .on('click', d => {
+                    d3.event.stopPropagation();
+                    focusOn3(d);
+                });
+
+            newSlice3.append('title')
+                .text(function(d) {
+                    if (d.depth==1 | d.depth==2 | d.depth==0)
+                        return d.data.name  + '\n' +d.data.tagline;
+                    else return d.data.name
+                });
+
+            //Slicessssss color and style
+            newSlice3.append('path')
+                .attr('class', 'main-arc')
+                .attr("fill-opacity", 1)
+                .style('fill', 
+                    function(d){
+                        if(d.depth>=2) {
+                            //console.log(d.data.score);
+                            if (d.data.score==0) {return "C0C0C0"}  //grey
+                            else if (d.data.score==1) {return "#e02e16"} //pink
+                            else if (d.data.score==2) {return "#fcb721"} //yellow
+                            else if (d.data.score ==3) {return "#61c076"} //green
+                            else {return "#b4acaa"}
+                        } 
+                        else if (d.depth == 1) {
+                             return myColor(d.value/d.children.length-1)
+                         }//
+                        //
+                        //
+                        
+                        //correct
+                        else if (d.depth ==0) {
+                            
+                            //console.log(d.findAllChildren)
+                            var total=0;
+                            for(var i=0; i<d.children.length; i++){
+                                var child=d.children[i];
+                                total +=(child.value/child.children.length-1);
+                            }
+                            return myColor(total/d.children.length);
+                        }
+
+                       
+                    }
+                )
+                .attr('d', arc);
+
+            newSlice3.append('path')
+                .attr('class', 'hidden-arc')
+                .attr('id', (_, i) => `hiddenArc${i+95}`)
+                .attr('d', middleArcLine);
+
+            const text3 = newSlice3.append('text')
+                .attr('display', d => textFits3(d) ? null : 'none');
+
+            // Add white contour
+            text3.append('textPath')
+                .attr('startOffset','50%')
+                .attr('xlink:href', (_, i) => `#hiddenArc${i+95}` )
+                .text(d => d.data.name)
+                .style('fill', 'none')
+                .style('stroke', '#fff')
+                .style('stroke-width', 5)
+                .style('stroke-linejoin', 'round');
+
+            text3.append('textPath')
+                .attr('startOffset','50%')
+                .attr('xlink:href', (_, i) => `#hiddenArc${i+95}` )
+                .text(d => d.data.name);
+        });
+
+    //Transitions
+        function focusOn3(d = { x0: 0, x1: 1, y0: 0, y1: 1 }) {
+            // Reset to top-level if no data point specified
+
+            const transition3 = innerSVG3.transition()
+                .duration(750)
+                .tween('scale', () => {
+                    const xd = d3.interpolate(x.domain(), [d.x0, d.x1]),
+                        yd = d3.interpolate(y.domain(), [d.y0, 1]);
+                    return t => { x.domain(xd(t)); y.domain(yd(t)); };
+                });
+
+            transition3.selectAll('path.main-arc')
+                .attrTween('d', d => () => arc(d));
+
+            transition3.selectAll('path.hidden-arc')
+                .attrTween('d', d => () => middleArcLine(d));
+
+            transition3.selectAll('innerSVG3.text3')
+                .attrTween('display', d => () => textFits3(d) ? null : 'none');
+
+            moveStackToFront(d);
+
+            //
+
+            function moveStackToFront(elD) {
+                innerSVG3.selectAll('.slice').filter(d => d === elD)
+                    .each(function(d) {
+                        this.parentNode.appendChild(this);
+                        if (d.parent) { moveStackToFront(d.parent); }
+                    })
+            }
+        }
+//***************
+//fourth svg
+//*****
+
+const textFits4 = dOne => {
+            const CHAR_SPACE = 4;
+
+            const deltaAngle = x(dOne.x1) - x(dOne.x0);
+            const r = Math.max(0, (y(dOne.y0) + y(dOne.y1)) / 2);
+            const perimeter = r * deltaAngle;
+
+            return dOne.data.name.length * CHAR_SPACE < perimeter;
+        };  
+var innerSVG4 = d3.select('body').append('svg')
+                .attr('width', '40vw')  //try to use 'vw', 'vh'
+                .attr('height', '40vh ')
+                .attr('viewBox', `-500 -455 ${width} ${height}`)
+                .on('click', () => focusOn4()); // Reset zoom on canvas click
+            //using json
+        d3.json("Statistical.json", (error, root) => {
+            if (error) throw error;
+
+            root = d3.hierarchy(root);
+            root.sum(dOne => dOne.score+1);
+
+            const slice4 = innerSVG4.selectAll('innerSVG4.g.slice')
+                .data(partition(root).descendants());
+
+            slice4.exit().remove();
+
+            const newSlice4 = slice4.enter()
+                .append('g').attr('class', 'slice')
+                .on('click', d => {
+                    d3.event.stopPropagation();
+                    focusOn4(d);
+                });
+
+            
+            //tagline
+            newSlice4.append('title')
+                // .text(d => d.data.name  + '\n' ); //this one works!
+                // + '\n' + formatNumber(d.value) d.value: sum of children's score
+                .text(function(dOne) {
+                    if (dOne.depth==2 | dOne.depth==1 | dOne.depth==0)
+                        return dOne.data.name  + '\n' +dOne.data.tagline;
+                    else return dOne.data.name
+                });
+
+            //Slicessssss color and style
+            newSlice4.append('path')
+                .attr('class', 'main-arc')
+                .attr("fill-opacity", 1)
+                .style('fill', 
+                    function(d){
+                        if(d.depth>=2) {
+                            //console.log(d.data.score);
+                            if (d.data.score==0) {return "C0C0C0"}  //grey
+                            else if (d.data.score==1) {return "#e02e16"} //pink
+                            else if (d.data.score==2) {return "#fcb721"} //yellow
+                            else if (d.data.score ==3) {return "#61c076"} //green
+                            else {return "#b4acaa"}
+                        } 
+                        else if (d.depth == 1) {
+                             return myColor(d.value/d.children.length-1)
+                         }
+                        else if (d.depth ==0) {
+    
+                            var total=0;
+                            for(var i=0; i<d.children.length; i++){
+                                var child=d.children[i];
+                                total +=(child.value/child.children.length-1);
+                            }
+                            return myColor(total/d.children.length);
+                        }
+
+                    }
+                )
+                .attr('d', arc);
+
+            newSlice4.append('path')
+                .attr('class', 'hidden-arc')
+                .attr('id', (_, i) => `hiddenArc${i+140}`)
+                .attr('d', middleArcLine);
+
+            const text4 = newSlice4.append('text')
+                .attr('display', d => textFits4(d) ? null : 'none');
+
+            // Add white contour
+            text4.append('textPath')
+                .attr('startOffset','50%')
+                .attr('xlink:href', (_, i) => `#hiddenArc${i+140}` )
+                .text(d => d.data.name)
+                .style('fill', 'none')
+                .style('stroke', '#fff')
+                .style('stroke-width', 5)
+                .style('stroke-linejoin', 'round');
+
+            text4.append('textPath')
+                .attr('startOffset','50%')
+                .attr('xlink:href', (_, i) => `#hiddenArc${i+140}` )
+                .text(d => d.data.name);
+        });
+
+    //Transitions
+        function focusOn4(d = { x0: 0, x1: 1, y0: 0, y1: 1 }) {
+            // Reset to top-level if no data point specified
+
+            const transition4 = innerSVG4.transition()
+                .duration(750)
+                .tween('scale', () => {
+                    const xd = d3.interpolate(x.domain(), [d.x0, d.x1]),
+                        yd = d3.interpolate(y.domain(), [d.y0, 1]);
+                    return t => { x.domain(xd(t)); y.domain(yd(t)); };
+                });
+
+            transition4.selectAll('path.main-arc')
+                .attrTween('d', d => () => arc(d));
+
+            transition4.selectAll('path.hidden-arc')
+                .attrTween('d', d => () => middleArcLine(d));
+
+            transition4.selectAll('innerSVG4.text4')
+                .attrTween('display', d => () => textFits4(d) ? null : 'none');
+
+            moveStackToFront(d);
+
+            function moveStackToFront(elD) {
+                innerSVG4.selectAll('.slice').filter(d => d === elD)
+                    .each(function(d) {
+                        this.parentNode.appendChild(this);
+                        if (d.parent) { moveStackToFront(d.parent); }
+                    })
+            }
+        }
+        
+    </script>
+</body>
